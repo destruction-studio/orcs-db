@@ -3,6 +3,7 @@
 import { Command } from 'commander'
 import * as path from 'path'
 import * as fs from 'fs'
+import { Generator } from 'orcs-db'
 
 const program = new Command()
 
@@ -17,15 +18,18 @@ program
   .action(async (file?: string) => {
     try {
       if (file) {
-        // Generate specific file
         const fullPath = path.resolve(file)
         if (!fs.existsSync(fullPath)) {
           console.error(`File not found: ${fullPath}`)
           process.exit(1)
         }
-        // Load the file to trigger Generator.define() calls
-        require(fullPath)
-        const { Generator } = require('../generator/Generator')
+        // Load file — user code calls Generator.define() on the same instance
+        const ext = path.extname(fullPath)
+        if (ext === '.mjs' || (ext === '.js' && isESMProject(fullPath))) {
+          await import(fullPath)
+        } else {
+          require(fullPath)
+        }
         const defs = Generator.getDefinitions()
         if (defs.length === 0) {
           console.error('No model definitions found in file. Make sure it calls Generator.define().')
@@ -34,9 +38,7 @@ program
         Generator.generateAll()
         console.log(`Generated ${defs.length} model(s) from ${file}`)
       } else {
-        // Process any already-registered definitions
         console.log('Scanning for model definitions...')
-        const { Generator } = require('../generator/Generator')
         const defs = Generator.getDefinitions()
         if (defs.length === 0) {
           console.log('No model definitions registered. Use: orcs-db generate <file>')
@@ -57,8 +59,7 @@ program
   .action(async () => {
     try {
       const config = await loadConfig()
-      const { Pool } = require('../core/Pool')
-      const { Migrator } = require('../migration/Migrator')
+      const { Pool, Migrator } = require('orcs-db')
 
       const pool = new Pool(config)
       const migrator = new Migrator(pool, config.migrationsDir || './migrations')
@@ -83,8 +84,7 @@ program
   .action(async () => {
     try {
       const config = await loadConfig()
-      const { Pool } = require('../core/Pool')
-      const { Migrator } = require('../migration/Migrator')
+      const { Pool, Migrator } = require('orcs-db')
 
       const pool = new Pool(config)
       const migrator = new Migrator(pool, config.migrationsDir || './migrations')
@@ -109,8 +109,7 @@ program
   .action(async () => {
     try {
       const config = await loadConfig()
-      const { Pool } = require('../core/Pool')
-      const { Migrator } = require('../migration/Migrator')
+      const { Pool, Migrator } = require('orcs-db')
 
       const pool = new Pool(config)
       const migrator = new Migrator(pool, config.migrationsDir || './migrations')
@@ -177,6 +176,25 @@ interface OrcDbConfig {
   database: string
   port?: number
   migrationsDir?: string
+}
+
+function isESMProject(filePath: string): boolean {
+  let dir = path.dirname(path.resolve(filePath))
+  while (true) {
+    const pkgPath = path.join(dir, 'package.json')
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'))
+        return pkg.type === 'module'
+      } catch {
+        return false
+      }
+    }
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return false
 }
 
 async function loadConfig(): Promise<OrcDbConfig> {

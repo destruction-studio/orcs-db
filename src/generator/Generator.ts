@@ -2,6 +2,8 @@ import { Field, FieldCompiled } from '../orm/Field'
 import * as fs from 'fs'
 import * as path from 'path'
 
+type ModuleFormat = 'cjs' | 'esm'
+
 interface Definition {
   file: string
   name: string
@@ -18,7 +20,7 @@ function mapFieldType(type: string): string {
   return type
 }
 
-function generateTS(name: string, dbName: string, compiledFields: FieldCompiled[]): string {
+function generateTS(name: string, dbName: string, compiledFields: FieldCompiled[], format: ModuleFormat = 'esm'): string {
   const basicName = `Basic${name}`
   const fieldsClassName = `${basicName}Fields`
   const rowName = `${name}Row`
@@ -29,7 +31,7 @@ function generateTS(name: string, dbName: string, compiledFields: FieldCompiled[
 
   const lines: string[] = []
 
-  // Imports
+  // Imports — TS always uses ESM-style import syntax
   lines.push(`import { Model } from 'orcs-db'`)
   lines.push(`import type { Connection } from 'orcs-db'`)
   lines.push('')
@@ -197,7 +199,7 @@ function generateTS(name: string, dbName: string, compiledFields: FieldCompiled[
   return lines.join('\n') + '\n'
 }
 
-function generateJS(name: string, dbName: string, compiledFields: FieldCompiled[]): string {
+function generateJS(name: string, dbName: string, compiledFields: FieldCompiled[], format: ModuleFormat = 'cjs'): string {
   const basicName = `Basic${name}`
   const fieldsClassName = `${basicName}Fields`
 
@@ -208,7 +210,11 @@ function generateJS(name: string, dbName: string, compiledFields: FieldCompiled[
   const lines: string[] = []
 
   // Imports
-  lines.push(`const { Model } = require('orcs-db')`)
+  if (format === 'esm') {
+    lines.push(`import { Model } from 'orcs-db'`)
+  } else {
+    lines.push(`const { Model } = require('orcs-db')`)
+  }
   lines.push('')
 
   // Fields class
@@ -355,7 +361,11 @@ function generateJS(name: string, dbName: string, compiledFields: FieldCompiled[
 
   lines.push('}')
   lines.push('')
-  lines.push(`exports.${basicName} = ${basicName}`)
+  if (format === 'esm') {
+    lines.push(`export { ${basicName} }`)
+  } else {
+    lines.push(`exports.${basicName} = ${basicName}`)
+  }
 
   return lines.join('\n') + '\n'
 }
@@ -373,6 +383,7 @@ export class Generator {
     const compiledFields = fields.map(f => f.compile())
     const ext = path.extname(file)
     const isTS = ext === '.ts'
+    const format = Generator.#detectFormat(file)
     const dir = path.dirname(file)
     const basicDir = path.join(dir, 'basic')
 
@@ -380,23 +391,32 @@ export class Generator {
       fs.mkdirSync(basicDir, { recursive: true })
     }
 
+    // Always regenerate basic class
     const content = isTS
-      ? generateTS(name, dbName, compiledFields)
-      : generateJS(name, dbName, compiledFields)
+      ? generateTS(name, dbName, compiledFields, format)
+      : generateJS(name, dbName, compiledFields, format)
 
-    const outFile = path.join(basicDir, `Basic${name}${ext}`)
+    const basicExt = Generator.#outputExt(ext, format)
+    const outFile = path.join(basicDir, `Basic${name}${basicExt}`)
     fs.writeFileSync(outFile, content, 'utf-8')
 
-    // Check if main class wrapper needs generation
-    const sourceContent = fs.readFileSync(file, 'utf-8')
-    if (!sourceContent.includes('/// MAIN_CLASS_GENERATED')) {
-      const parts = sourceContent.split('/// AUTO_CODE')
-      if (parts.length >= 2) {
+    // Create or update main class
+    const mainFile = path.join(dir, `${name}${basicExt}`)
+    if (!fs.existsSync(mainFile)) {
+      // No file at all — create fresh main class
+      const mainContent = isTS
+        ? generateMainClassTS(name, basicExt)
+        : generateMainClassJS(name, basicExt, format)
+      fs.writeFileSync(mainFile, mainContent, 'utf-8')
+    } else {
+      // File exists — only add main class if it doesn't already contain the class
+      const existing = fs.readFileSync(mainFile, 'utf-8')
+      if (!existing.includes(`class ${name}`)) {
         const mainContent = isTS
-          ? generateMainClassTS(name, dbName)
-          : generateMainClassJS(name, dbName)
-        const newSource = parts[0] + '/// AUTO_CODE\n/// MAIN_CLASS_GENERATED\n' + mainContent
-        fs.writeFileSync(file, newSource, 'utf-8')
+          ? generateMainClassTS(name, basicExt)
+          : generateMainClassJS(name, basicExt, format)
+        const separator = existing.trim() === '' ? '' : '\n'
+        fs.writeFileSync(mainFile, existing.trimEnd() + separator + '\n' + mainContent, 'utf-8')
       }
     }
   }
@@ -418,12 +438,44 @@ export class Generator {
       Generator.generate(def.file, def.name, def.dbName, def.fields)
     }
   }
+
+  static #detectFormat(filePath: string): ModuleFormat {
+    const ext = path.extname(filePath)
+    if (ext === '.mjs') return 'esm'
+    if (ext === '.cjs') return 'cjs'
+    // .ts and .js — check nearest package.json
+    let dir = path.dirname(path.resolve(filePath))
+    while (true) {
+      const pkgPath = path.join(dir, 'package.json')
+      if (fs.existsSync(pkgPath)) {
+        try {
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'))
+          return pkg.type === 'module' ? 'esm' : 'cjs'
+        } catch {
+          return 'cjs'
+        }
+      }
+      const parent = path.dirname(dir)
+      if (parent === dir) break
+      dir = parent
+    }
+    return 'cjs'
+  }
+
+  static #outputExt(sourceExt: string, format: ModuleFormat): string {
+    if (sourceExt === '.ts') return '.ts'
+    if (sourceExt === '.mjs') return '.mjs'
+    if (sourceExt === '.cjs') return '.cjs'
+    // .js — if project is ESM keep .js, if CJS keep .js
+    return '.js'
+  }
 }
 
-function generateMainClassTS(name: string, _dbName: string): string {
+function generateMainClassTS(name: string, ext: string): string {
   const basicName = `Basic${name}`
+  const importPath = `./basic/${basicName}`
   const lines: string[] = []
-  lines.push(`import { ${basicName} } from './basic/${basicName}'`)
+  lines.push(`import { ${basicName} } from '${importPath}'`)
   lines.push('')
   lines.push(`export class ${name} extends ${basicName} {`)
   lines.push('}')
@@ -431,15 +483,23 @@ function generateMainClassTS(name: string, _dbName: string): string {
   return lines.join('\n')
 }
 
-function generateMainClassJS(name: string, _dbName: string): string {
+function generateMainClassJS(name: string, ext: string, format: ModuleFormat): string {
   const basicName = `Basic${name}`
+  const importPath = `./basic/${basicName}${ext}`
   const lines: string[] = []
-  lines.push(`const { ${basicName} } = require('./basic/${basicName}')`)
-  lines.push('')
-  lines.push(`class ${name} extends ${basicName} {`)
-  lines.push('}')
-  lines.push('')
-  lines.push(`exports.${name} = ${name}`)
+  if (format === 'esm') {
+    lines.push(`import { ${basicName} } from '${importPath}'`)
+    lines.push('')
+    lines.push(`export class ${name} extends ${basicName} {`)
+    lines.push('}')
+  } else {
+    lines.push(`const { ${basicName} } = require('${importPath}')`)
+    lines.push('')
+    lines.push(`class ${name} extends ${basicName} {`)
+    lines.push('}')
+    lines.push('')
+    lines.push(`module.exports = { ${name} }`)
+  }
   lines.push('')
   return lines.join('\n')
 }
