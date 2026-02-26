@@ -202,8 +202,9 @@ describe('Generator', () => {
       const content = fs.readFileSync(modelFile, 'utf-8')
       expect(content).toContain("import { BasicUser } from './basic/BasicUser'")
       expect(content).toContain('export class User extends BasicUser')
-      // Original content preserved
-      expect(content).toContain('Generator.define')
+      // Define block should be commented out
+      expect(content).toContain('/* orcs-db:define')
+      expect(content).toContain('orcs-db:define */')
     })
 
     it('does not modify file if class already exists', () => {
@@ -249,6 +250,120 @@ describe('Generator', () => {
       expect(content).toContain("require('./basic/BasicUser.js')")
       expect(content).toContain('module.exports')
       expect(content).toContain('class User extends BasicUser')
+    })
+  })
+
+  describe('commentDefines / uncommentDefines (Bug 4)', () => {
+    it('comments out Generator.define() block after generate()', () => {
+      const modelFile = path.join(tmpDir, 'User.ts')
+      const src = [
+        "import { Generator, Field } from 'orcs-db'",
+        '',
+        "Generator.define(__filename, 'User', 'users', [",
+        "  Field.int('id').primary(),",
+        "  Field.string('name'),",
+        '])',
+      ].join('\n')
+      fs.writeFileSync(modelFile, src)
+
+      Generator.generate(modelFile, 'User', 'users', [
+        Field.int('id').primary(),
+        Field.string('name'),
+      ])
+
+      const content = fs.readFileSync(modelFile, 'utf-8')
+      expect(content).toContain('/* orcs-db:define')
+      expect(content).toContain('orcs-db:define */')
+      // The define call itself should be inside the comment block
+      expect(content).toContain("Generator.define(__filename, 'User', 'users', [")
+      // Import should NOT be commented out
+      expect(content).toMatch(/^import \{ Generator/)
+    })
+
+    it('uncommentDefines restores commented blocks', () => {
+      const modelFile = path.join(tmpDir, 'User.ts')
+      const commented = [
+        "import { Generator, Field } from 'orcs-db'",
+        '',
+        '/* orcs-db:define',
+        "Generator.define(__filename, 'User', 'users', [",
+        "  Field.int('id').primary(),",
+        '])',
+        'orcs-db:define */',
+      ].join('\n')
+      fs.writeFileSync(modelFile, commented)
+
+      const changed = Generator.uncommentDefines(modelFile)
+      expect(changed).toBe(true)
+
+      const content = fs.readFileSync(modelFile, 'utf-8')
+      expect(content).not.toContain('/* orcs-db:define')
+      expect(content).not.toContain('orcs-db:define */')
+      expect(content).toContain("Generator.define(__filename, 'User', 'users', [")
+    })
+
+    it('uncommentDefines returns false if no markers found', () => {
+      const modelFile = path.join(tmpDir, 'User.ts')
+      fs.writeFileSync(modelFile, 'no markers here')
+
+      const changed = Generator.uncommentDefines(modelFile)
+      expect(changed).toBe(false)
+    })
+
+    it('does not double-comment already commented defines', () => {
+      const modelFile = path.join(tmpDir, 'User.ts')
+      const src = [
+        '/* orcs-db:define',
+        "Generator.define(__filename, 'User', 'users', [])",
+        'orcs-db:define */',
+      ].join('\n')
+      fs.writeFileSync(modelFile, src)
+
+      Generator.commentDefines(modelFile)
+
+      const content = fs.readFileSync(modelFile, 'utf-8')
+      // Should not nest markers
+      const markerCount = (content.match(/orcs-db:define/g) || []).length
+      expect(markerCount).toBe(2) // one start, one end
+    })
+
+    it('round-trip: uncomment → generate → re-commented', () => {
+      const modelFile = path.join(tmpDir, 'User.ts')
+      // Start with already-commented state (as if previously generated)
+      const initial = [
+        "import { Generator, Field } from 'orcs-db'",
+        '',
+        '/* orcs-db:define',
+        "Generator.define(__filename, 'User', 'users', [",
+        "  Field.int('id').primary(),",
+        '])',
+        'orcs-db:define */',
+        '',
+        "import { BasicUser } from './basic/BasicUser'",
+        '',
+        'export class User extends BasicUser {',
+        '}',
+        '',
+      ].join('\n')
+      fs.writeFileSync(modelFile, initial)
+
+      // Step 1: uncomment
+      Generator.uncommentDefines(modelFile)
+      const afterUncomment = fs.readFileSync(modelFile, 'utf-8')
+      expect(afterUncomment).not.toContain('/* orcs-db:define')
+      expect(afterUncomment).toContain('Generator.define(')
+
+      // Step 2: generate (would normally require() the file first)
+      Generator.generate(modelFile, 'User', 'users', [
+        Field.int('id').primary(),
+      ])
+
+      // Step 3: verify re-commented
+      const afterGenerate = fs.readFileSync(modelFile, 'utf-8')
+      expect(afterGenerate).toContain('/* orcs-db:define')
+      expect(afterGenerate).toContain('orcs-db:define */')
+      // Class should still be there
+      expect(afterGenerate).toContain('export class User extends BasicUser')
     })
   })
 
