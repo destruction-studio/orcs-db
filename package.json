@@ -1,0 +1,52 @@
+{
+  "name": "orcs-db",
+  "version": "0.1.0",
+  "description": "TypeScript MySQL library with query builder, ORM codegen, and migrations",
+  "author": "incadawr",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/destruction-studio/orcs-db.git"
+  },
+  "bugs": {
+    "url": "https://github.com/destruction-studio/orcs-db/issues"
+  },
+  "homepage": "https://github.com/destruction-studio/orcs-db#readme",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "orcs-db": "dist/cli/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "mysql",
+    "mysql2",
+    "orm",
+    "query-builder",
+    "codegen",
+    "migrations",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "npm run build",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "mysql2": "^3.9.0",
+    "commander": "^12.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "tsup": "^8.0.0",
+    "vitest": "^1.6.0",
+    "@types/node": "^20.0.0"
+  }
+}
