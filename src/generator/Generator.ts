@@ -376,6 +376,9 @@ function isReservedStaticName(name: string): boolean {
   return reserved.includes(name)
 }
 
+const DEFINE_MARKER_START = '/* orcs-db:define'
+const DEFINE_MARKER_END = 'orcs-db:define */'
+
 export class Generator {
   static #definitions: Definition[] = []
 
@@ -403,13 +406,11 @@ export class Generator {
     // Create or update main class
     const mainFile = path.join(dir, `${name}${basicExt}`)
     if (!fs.existsSync(mainFile)) {
-      // No file at all — create fresh main class
       const mainContent = isTS
         ? generateMainClassTS(name, basicExt)
         : generateMainClassJS(name, basicExt, format)
       fs.writeFileSync(mainFile, mainContent, 'utf-8')
     } else {
-      // File exists — only add main class if it doesn't already contain the class
       const existing = fs.readFileSync(mainFile, 'utf-8')
       if (!existing.includes(`class ${name}`)) {
         const mainContent = isTS
@@ -419,6 +420,9 @@ export class Generator {
         fs.writeFileSync(mainFile, existing.trimEnd() + separator + '\n' + mainContent, 'utf-8')
       }
     }
+
+    // Comment out Generator.define() block in the source file
+    Generator.commentDefines(file)
   }
 
   static define(file: string, name: string, dbName: string, fields: Field[]): void {
@@ -439,11 +443,82 @@ export class Generator {
     }
   }
 
+  /**
+   * Uncomment `/* orcs-db:define ... * /` blocks back into live code.
+   * Call before loading a file that may have commented-out defines.
+   * Returns true if any blocks were uncommented.
+   */
+  static uncommentDefines(filePath: string): boolean {
+    if (!fs.existsSync(filePath)) return false
+    const src = fs.readFileSync(filePath, 'utf-8')
+    if (!src.includes(DEFINE_MARKER_START)) return false
+
+    const result = src.replace(
+      new RegExp(escapeRegex(DEFINE_MARKER_START) + '\\n([\\s\\S]*?)\\n' + escapeRegex(DEFINE_MARKER_END), 'g'),
+      (_match, body) => body
+    )
+
+    if (result !== src) {
+      fs.writeFileSync(filePath, result, 'utf-8')
+      return true
+    }
+    return false
+  }
+
+  /**
+   * Wrap `Generator.define(...)` calls (possibly multi-line) with comment markers.
+   * Handles both `Generator.define(` and import-prefixed patterns.
+   */
+  static commentDefines(filePath: string): void {
+    if (!fs.existsSync(filePath)) return
+    const src = fs.readFileSync(filePath, 'utf-8')
+    // Already commented — skip
+    if (src.includes(DEFINE_MARKER_START)) return
+
+    const lines = src.split('\n')
+    const result: string[] = []
+    let i = 0
+
+    while (i < lines.length) {
+      const line = lines[i]
+      // Detect start of Generator.define( or Generator.generate( call
+      if (/Generator\.(define|generate)\s*\(/.test(line)) {
+        const blockLines: string[] = [line]
+        // Track parentheses to find the end of the call
+        let depth = 0
+        for (const ch of line) {
+          if (ch === '(') depth++
+          if (ch === ')') depth--
+        }
+        let j = i + 1
+        while (depth > 0 && j < lines.length) {
+          blockLines.push(lines[j])
+          for (const ch of lines[j]) {
+            if (ch === '(') depth++
+            if (ch === ')') depth--
+          }
+          j++
+        }
+        result.push(DEFINE_MARKER_START)
+        result.push(...blockLines)
+        result.push(DEFINE_MARKER_END)
+        i = j
+      } else {
+        result.push(line)
+        i++
+      }
+    }
+
+    const output = result.join('\n')
+    if (output !== src) {
+      fs.writeFileSync(filePath, output, 'utf-8')
+    }
+  }
+
   static #detectFormat(filePath: string): ModuleFormat {
     const ext = path.extname(filePath)
     if (ext === '.mjs') return 'esm'
     if (ext === '.cjs') return 'cjs'
-    // .ts and .js — check nearest package.json
     let dir = path.dirname(path.resolve(filePath))
     while (true) {
       const pkgPath = path.join(dir, 'package.json')
@@ -466,9 +541,12 @@ export class Generator {
     if (sourceExt === '.ts') return '.ts'
     if (sourceExt === '.mjs') return '.mjs'
     if (sourceExt === '.cjs') return '.cjs'
-    // .js — if project is ESM keep .js, if CJS keep .js
     return '.js'
   }
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&')
 }
 
 function generateMainClassTS(name: string, ext: string): string {

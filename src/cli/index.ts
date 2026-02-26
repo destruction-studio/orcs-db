@@ -23,6 +23,8 @@ program
           console.error(`File not found: ${fullPath}`)
           process.exit(1)
         }
+        // Uncomment any previously commented-out define blocks
+        Generator.uncommentDefines(fullPath)
         // Load file — user code calls Generator.define() on the same instance
         const ext = path.extname(fullPath)
         if (ext === '.mjs' || (ext === '.js' && isESMProject(fullPath))) {
@@ -35,6 +37,7 @@ program
           console.error('No model definitions found in file. Make sure it calls Generator.define().')
           process.exit(1)
         }
+        // generateAll() will also comment out defines after generation
         Generator.generateAll()
         console.log(`Generated ${defs.length} model(s) from ${file}`)
       } else {
