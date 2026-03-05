@@ -120,6 +120,66 @@ describe('SqlGenerator', () => {
       expect(sql).toContain(' AND ')
     })
 
+    it('$or with two conditions', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        $or: [
+          { status: 'active' },
+          { status: 'pending' },
+        ],
+      })
+      expect(sql).toContain("(`status` = 'active' OR `status` = 'pending')")
+    })
+
+    it('$or combined with AND conditions', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        role: 'admin',
+        $or: [
+          { lastCheckedAt: null },
+          { lastCheckedAt: ['<', '2024-01-01'] },
+        ],
+      })
+      expect(sql).toContain("`role` = 'admin'")
+      expect(sql).toContain(' AND ')
+      expect(sql).toContain("(ISNULL(`lastCheckedAt`) OR `lastCheckedAt` < '2024-01-01')")
+    })
+
+    it('nested $or', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        $or: [
+          { status: 'active' },
+          { $or: [{ role: 'admin' }, { role: 'superadmin' }] },
+        ],
+      })
+      expect(sql).toContain("(`status` = 'active' OR (`role` = 'admin' OR `role` = 'superadmin'))")
+    })
+
+    it('$or with various operator types', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        $or: [
+          { deleted: null },
+          { age: ['>', 18] },
+          { id: ['IN', [1, 2, 3]] },
+          { score: ['BETWEEN', 10, 100] },
+        ],
+      })
+      expect(sql).toContain('ISNULL(`deleted`)')
+      expect(sql).toContain("`age` > '18'")
+      expect(sql).toContain("`id` IN('1','2','3')")
+      expect(sql).toContain("`score` BETWEEN '10' AND '100'")
+      expect(sql).toContain(' OR ')
+    })
+
+    it('$or with empty array produces no clause', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', { name: 'John', $or: [] })
+      expect(sql).toContain("`name` = 'John'")
+      expect(sql).not.toContain('OR')
+    })
+
     it('empty where object', () => {
       const gen = createGenerator()
       const sql = gen.select('*', 'users', {})

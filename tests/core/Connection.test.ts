@@ -44,6 +44,25 @@ describe('Connection', () => {
     })
   })
 
+  describe('select with $or', () => {
+    it('generates SQL with OR clause', async () => {
+      const mock = createMockConnection([[], []])
+      const conn = new Connection(mock as any)
+
+      await conn.select('*', 'users', {
+        status: 'active',
+        $or: [
+          { lastCheckedAt: null },
+          { lastCheckedAt: ['<', '2024-01-01'] },
+        ],
+      })
+      const sql = mock.query.mock.calls[0][0] as string
+      expect(sql).toContain("`status` = 'active'")
+      expect(sql).toContain('ISNULL(`lastCheckedAt`)')
+      expect(sql).toContain(' OR ')
+    })
+  })
+
   describe('insert', () => {
     it('returns EditResult with insertId', async () => {
       const mock = createMockConnection([{ insertId: 5, affectedRows: 1, changedRows: 0 }, undefined])

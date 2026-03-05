@@ -7,7 +7,9 @@ export type WhereValue =
   | ['IN' | 'NOT IN', (string | number)[]]
   | ['BETWEEN', string | number, string | number]
 
-export type Where = Record<string, WhereValue>
+export type Where = Record<string, WhereValue> & {
+  $or?: Where[]
+}
 
 export interface QueryOptions {
   limit?: number | [number, number]
