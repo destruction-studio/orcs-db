@@ -202,6 +202,15 @@ export class SqlGenerator {
     if (!(where instanceof Object)) return ''
     for (const i in where) {
       if (!Object.prototype.hasOwnProperty.call(where, i)) continue
+      if (i === '$or') {
+        const orClauses = (where[i] as Where[])
+          .map(w => this.#whereToString(w))
+          .filter(s => s !== '')
+        if (orClauses.length > 0) {
+          whereA.push('(' + orClauses.join(' OR ') + ')')
+        }
+        continue
+      }
       if (where[i] === null) {
         whereA.push('ISNULL(`' + i + '`)')
       } else if (where[i] instanceof Sql) {
