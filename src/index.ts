@@ -12,7 +12,7 @@ export type { EditResultData } from './core/result/EditResult'
 export { DbError } from './core/errors/DbError'
 export { QueryError } from './core/errors/QueryError'
 export type { QueryErrorParams } from './core/errors/QueryError'
-export type { Where, WhereValue, QueryOptions, InsertOptions } from './core/types'
+export type { Where, WhereValue, QueryOptions, InsertOptions, OrderOption, OrderDirection } from './core/types'
 
 // ORM
 export { Model } from './orm/Model'

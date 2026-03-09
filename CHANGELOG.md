@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.0] - 2026-03-09
+
+### Added
+
+- **Structured ORDER BY** — `order` в `QueryOptions` теперь принимает не только raw string, но и типизированные формы: tuple `['field', 'DESC']`, массив tuple `[['a', 'ASC'], ['b', 'DESC']]`, объект `{ a: 'ASC', b: 'DESC' }`, и `Sql` для сложных выражений. Структурированные формы backtick-экранируют имена полей и валидируют направление (только ASC/DESC)
+
+### Exported
+
+- Новые типы `OrderOption`, `OrderDirection`
+
 ## [0.2.0] - 2026-03-06
 
 ### Added

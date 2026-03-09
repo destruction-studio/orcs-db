@@ -11,9 +11,17 @@ export type Where = Record<string, WhereValue> & {
   $or?: Where[]
 }
 
+export type OrderDirection = 'ASC' | 'DESC' | 'asc' | 'desc'
+export type OrderOption =
+  | string
+  | Sql
+  | [string, OrderDirection]
+  | [string, OrderDirection][]
+  | Record<string, OrderDirection>
+
 export interface QueryOptions {
   limit?: number | [number, number]
-  order?: string
+  order?: OrderOption
   group?: string
   forUpdate?: boolean
 }

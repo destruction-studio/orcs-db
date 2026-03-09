@@ -1,5 +1,5 @@
 import { Sql } from './Sql'
-import type { Where, QueryOptions, InsertOptions } from './types'
+import type { Where, QueryOptions, InsertOptions, OrderOption } from './types'
 
 export class SqlGenerator {
   #quoteFunction: ((value: any) => string) | null = null
@@ -28,7 +28,10 @@ export class SqlGenerator {
       }
     }
     let order = ''
-    if (opts.order !== undefined) order = ' ORDER BY ' + opts.order
+    if (opts.order !== undefined) {
+      const orderStr = this.#orderToString(opts.order)
+      if (orderStr !== '') order = ' ORDER BY ' + orderStr
+    }
     return 'DELETE FROM `' + table + '` ' + whereStr + order + limit
   }
 
@@ -48,7 +51,10 @@ export class SqlGenerator {
       }
     }
     if (opts.limit !== undefined) limit = ' LIMIT ' + parseInt(String(opts.limit))
-    if (opts.order !== undefined) order = ' ORDER BY ' + opts.order
+    if (opts.order !== undefined) {
+      const orderStr = this.#orderToString(opts.order)
+      if (orderStr !== '') order = ' ORDER BY ' + orderStr
+    }
     return 'UPDATE `' + table + '` SET ' + values.join(', ') + whereStr + order + limit
   }
 
@@ -191,7 +197,11 @@ export class SqlGenerator {
     let whereStr = this.#whereToString(where)
     whereStr = whereStr === '' ? '' : 'WHERE ' + whereStr
     const group = opts.group === undefined ? '' : ' GROUP BY `' + opts.group + '`'
-    const order = opts.order === undefined ? '' : ' ORDER BY ' + opts.order
+    let order = ''
+    if (opts.order !== undefined) {
+      const orderStr = this.#orderToString(opts.order)
+      if (orderStr !== '') order = ' ORDER BY ' + orderStr
+    }
     const limit = opts.limit === undefined ? '' : ' LIMIT ' + opts.limit
     const forUpdate = opts.forUpdate ? ' FOR UPDATE' : ''
     return 'SELECT ' + columnsStr + ' FROM `' + from + '` ' + whereStr + group + order + limit + forUpdate
@@ -241,6 +251,40 @@ export class SqlGenerator {
   quoteTable(variable: string): string {
     if (this.#quoteTableFunction === null) throw new Error('quoteTableFunctionNotSet')
     return this.#quoteTableFunction(variable)
+  }
+
+  static #validDirections = new Set(['ASC', 'DESC'])
+
+  #orderToString(order: OrderOption): string {
+    if (order instanceof Sql) {
+      return order.toString()
+    }
+    if (typeof order === 'string') {
+      return order
+    }
+    if (Array.isArray(order)) {
+      if (order.length === 0) return ''
+      if (Array.isArray(order[0])) {
+        return (order as [string, string][])
+          .map(([field, dir]) => '`' + field + '` ' + SqlGenerator.#validateDirection(dir))
+          .join(', ')
+      }
+      return '`' + order[0] + '` ' + SqlGenerator.#validateDirection(order[1] as string)
+    }
+    const parts: string[] = []
+    for (const field in order) {
+      if (!Object.prototype.hasOwnProperty.call(order, field)) continue
+      parts.push('`' + field + '` ' + SqlGenerator.#validateDirection((order as Record<string, string>)[field]))
+    }
+    return parts.join(', ')
+  }
+
+  static #validateDirection(dir: string): string {
+    const upper = dir.toUpperCase()
+    if (!SqlGenerator.#validDirections.has(upper)) {
+      throw new Error('Invalid ORDER BY direction: ' + dir)
+    }
+    return upper
   }
 
   static checkOptions(options: any): Record<string, any> {

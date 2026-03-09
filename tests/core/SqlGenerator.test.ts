@@ -42,10 +42,45 @@ describe('SqlGenerator', () => {
       expect(sql).toContain('LIMIT 10')
     })
 
-    it('select with order', () => {
+    it('select with order string (raw)', () => {
       const gen = createGenerator()
       const sql = gen.select('*', 'users', {}, { order: 'id DESC' })
       expect(sql).toContain('ORDER BY id DESC')
+    })
+
+    it('select with order tuple', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {}, { order: ['name', 'ASC'] })
+      expect(sql).toContain('ORDER BY `name` ASC')
+    })
+
+    it('select with order array of tuples', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {}, { order: [['name', 'ASC'], ['id', 'DESC']] })
+      expect(sql).toContain('ORDER BY `name` ASC, `id` DESC')
+    })
+
+    it('select with order object', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {}, { order: { name: 'ASC', id: 'DESC' } })
+      expect(sql).toContain('ORDER BY `name` ASC, `id` DESC')
+    })
+
+    it('select with order Sql', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {}, { order: new Sql('FIELD(status, "active", "pending")') })
+      expect(sql).toContain('ORDER BY FIELD(status, "active", "pending")')
+    })
+
+    it('select with order lowercase direction', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {}, { order: ['name', 'desc'] })
+      expect(sql).toContain('ORDER BY `name` DESC')
+    })
+
+    it('order rejects invalid direction', () => {
+      const gen = createGenerator()
+      expect(() => gen.select('*', 'users', {}, { order: ['name', 'DROP TABLE users' as any] })).toThrow('Invalid ORDER BY direction')
     })
 
     it('select with group', () => {
@@ -273,10 +308,16 @@ describe('SqlGenerator', () => {
       expect(sql).toContain('LIMIT 100')
     })
 
-    it('delete with order', () => {
+    it('delete with order string', () => {
       const gen = createGenerator()
       const sql = gen.deleteFrom('users', {}, { order: 'id ASC' })
       expect(sql).toContain('ORDER BY id ASC')
+    })
+
+    it('delete with order tuple', () => {
+      const gen = createGenerator()
+      const sql = gen.deleteFrom('users', {}, { order: ['id', 'ASC'] })
+      expect(sql).toContain('ORDER BY `id` ASC')
     })
   })
 
