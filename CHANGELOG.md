@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0] - 2026-03-14
+
+### Added
+
+- **`$and` в WHERE-условиях** — поддержка AND-группировки через `$and: Where[]` для дублирования полей в условиях. Работает аналогично `$or`, поддерживает вложенность и комбинацию с `$or`
+- **`Sql` в операторных значениях WHERE** — операторы `<`, `>`, `!=`, `>=`, `<=`, `BETWEEN` теперь принимают `Sql` инстансы для raw SQL выражений (например `['<', db.func.dateSub(30, 'SECOND')]`)
+- **`db.func` namespace** — новый класс `Func` с методами `dateSub()` и `dateAdd()` для генерации `DATE_SUB`/`DATE_ADD` выражений. Доступен через `db.func` на Connection, поддерживает все INTERVAL юниты с рантайм-валидацией
+
+### Changed
+
+- Тип `Where` переключен с `Record<string, WhereValue> &` на явную index signature для корректной работы `$or`/`$and`
+
+### Exported
+
+- `Func`, `IntervalUnit`
+
 ## [0.3.0] - 2026-03-09
 
 ### Added
