@@ -3,12 +3,14 @@ import { Sql } from './Sql'
 export type WhereValue =
   | string | number | boolean | null
   | Sql
-  | ['>' | '<' | '>=' | '<=' | '!=', string | number]
+  | ['>' | '<' | '>=' | '<=' | '!=', string | number | Sql]
   | ['IN' | 'NOT IN', (string | number)[]]
-  | ['BETWEEN', string | number, string | number]
+  | ['BETWEEN', string | number | Sql, string | number | Sql]
 
-export type Where = Record<string, WhereValue> & {
+export type Where = {
+  [key: string]: WhereValue | Where[] | undefined
   $or?: Where[]
+  $and?: Where[]
 }
 
 export type OrderDirection = 'ASC' | 'DESC' | 'asc' | 'desc'

@@ -215,6 +215,129 @@ describe('SqlGenerator', () => {
       expect(sql).not.toContain('OR')
     })
 
+    it('$and with two conditions', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        $and: [
+          { age: ['>', 18] },
+          { age: ['<', 65] },
+        ],
+      })
+      expect(sql).toContain("(`age` > '18' AND `age` < '65')")
+    })
+
+    it('$and combined with top-level AND', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        status: 'active',
+        $and: [
+          { score: ['>=', 10] },
+          { score: ['<=', 100] },
+        ],
+      })
+      expect(sql).toContain("`status` = 'active' AND (`score` >= '10' AND `score` <= '100')")
+    })
+
+    it('nested $and', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        $and: [
+          { type: 'premium' },
+          { $and: [{ age: ['>', 18] }, { age: ['<', 65] }] },
+        ],
+      })
+      expect(sql).toContain("(`type` = 'premium' AND (`age` > '18' AND `age` < '65'))")
+    })
+
+    it('$and combined with $or', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        $and: [{ score: ['>=', 10] }, { score: ['<=', 100] }],
+        $or: [{ status: 'active' }, { status: 'pending' }],
+      })
+      expect(sql).toContain("(`score` >= '10' AND `score` <= '100') AND (`status` = 'active' OR `status` = 'pending')")
+    })
+
+    it('$and with empty array produces no clause', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', { name: 'John', $and: [] })
+      expect(sql).toContain("`name` = 'John'")
+      expect(sql).not.toContain('()')
+      expect(sql).not.toContain(' AND (')
+    })
+
+    it('$and with single element', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        $and: [{ status: 'active' }],
+      })
+      expect(sql).toContain("(`status` = 'active')")
+    })
+
+    it('Sql instance in > operator', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        createdAt: ['>', new Sql('DATE_SUB(NOW(), INTERVAL 30 DAY)')],
+      })
+      expect(sql).toContain('`createdAt` > DATE_SUB(NOW(), INTERVAL 30 DAY)')
+    })
+
+    it('Sql instance in < operator', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        updatedAt: ['<', new Sql('NOW()')],
+      })
+      expect(sql).toContain('`updatedAt` < NOW()')
+    })
+
+    it('Sql instance in != operator', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        status: ['!=', new Sql("'archived'")],
+      })
+      expect(sql).toContain("`status` != 'archived'")
+    })
+
+    it('Sql instance in >= operator', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        score: ['>=', new Sql('AVG(score)')],
+      })
+      expect(sql).toContain('`score` >= AVG(score)')
+    })
+
+    it('Sql instance in <= operator', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        age: ['<=', new Sql('MAX(age)')],
+      })
+      expect(sql).toContain('`age` <= MAX(age)')
+    })
+
+    it('Sql instance in BETWEEN operator', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        createdAt: ['BETWEEN', new Sql('DATE_SUB(NOW(), INTERVAL 7 DAY)'), new Sql('NOW()')],
+      })
+      expect(sql).toContain('`createdAt` BETWEEN DATE_SUB(NOW(), INTERVAL 7 DAY) AND NOW()')
+    })
+
+    it('Sql instance mixed with regular value in BETWEEN', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        createdAt: ['BETWEEN', '2026-01-01', new Sql('NOW()')],
+      })
+      expect(sql).toContain("`createdAt` BETWEEN '2026-01-01' AND NOW()")
+    })
+
+    it('Sql instance in fallback operator (LIKE)', () => {
+      const gen = createGenerator()
+      const sql = gen.select('*', 'users', {
+        name: ['LIKE', new Sql("CONCAT('%', 'test', '%')")],
+      })
+      expect(sql).toContain("`name` LIKE CONCAT('%', 'test', '%')")
+    })
+
     it('empty where object', () => {
       const gen = createGenerator()
       const sql = gen.select('*', 'users', {})
@@ -291,6 +414,25 @@ describe('SqlGenerator', () => {
       const gen = createGenerator()
       const sql = gen.update({ status: 'inactive' }, 'users', { active: 0 }, { limit: 100 })
       expect(sql).toContain('LIMIT 100')
+    })
+
+    it('update with $and and Sql in operator (target query)', () => {
+      const gen = createGenerator()
+      const dateSub = new Sql("DATE_SUB(NOW(), INTERVAL '30' SECOND)")
+      const sql = gen.update(
+        { acquired: 0, acquiredAt: null },
+        'statQueue',
+        {
+          acquired: ['>', 0],
+          $and: [
+            { acquiredAt: ['<', dateSub] },
+          ],
+        },
+      )
+      expect(sql).toContain("UPDATE `statQueue` SET")
+      expect(sql).toContain("`acquired` = '0'")
+      expect(sql).toContain("`acquired` > '0'")
+      expect(sql).toContain("(`acquiredAt` < DATE_SUB(NOW(), INTERVAL '30' SECOND))")
     })
   })
 

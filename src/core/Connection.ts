@@ -1,4 +1,5 @@
 import { Sql } from './Sql'
+import { Func } from './Func'
 import { SqlGenerator } from './SqlGenerator'
 import { SelectResult } from './result/SelectResult'
 import { EditResult } from './result/EditResult'
@@ -10,6 +11,7 @@ type ResultClass<T> = new (...args: any[]) => T
 export class Connection {
   readonly #connection: any
   readonly #sqlGenerator: SqlGenerator
+  #func?: Func
 
   constructor(connection: any) {
     this.#connection = connection
@@ -30,6 +32,11 @@ export class Connection {
       return variable.toString()
     }
     return '`' + variable + '`'
+  }
+
+  get func(): Func {
+    if (!this.#func) this.#func = new Func(this.quote.bind(this), this.quoteField.bind(this))
+    return this.#func
   }
 
   #query<T>(queryString: string, bind: any[], resultClass: ResultClass<T>): Promise<T> {

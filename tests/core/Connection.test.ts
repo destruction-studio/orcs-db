@@ -203,6 +203,27 @@ describe('Connection', () => {
     })
   })
 
+  describe('func', () => {
+    it('func getter returns Func with dateSub/dateAdd', () => {
+      const mock = createMockConnection()
+      const conn = new Connection(mock as any)
+
+      const sql = conn.func.dateSub(30, 'SECOND')
+      expect(sql.toString()).toContain('DATE_SUB(NOW(), INTERVAL')
+      expect(sql.toString()).toContain('SECOND')
+
+      const sqlAdd = conn.func.dateAdd(7, 'DAY')
+      expect(sqlAdd.toString()).toContain('DATE_ADD(NOW(), INTERVAL')
+      expect(sqlAdd.toString()).toContain('DAY')
+    })
+
+    it('func getter returns cached instance', () => {
+      const mock = createMockConnection()
+      const conn = new Connection(mock as any)
+      expect(conn.func).toBe(conn.func)
+    })
+  })
+
   describe('quote', () => {
     it('escapes normal values via connection.escape', () => {
       const mock = createMockConnection()

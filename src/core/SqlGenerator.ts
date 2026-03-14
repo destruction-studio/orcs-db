@@ -221,20 +221,30 @@ export class SqlGenerator {
         }
         continue
       }
+      if (i === '$and') {
+        const andClauses = (where[i] as Where[])
+          .map(w => this.#whereToString(w))
+          .filter(s => s !== '')
+        if (andClauses.length > 0) {
+          whereA.push('(' + andClauses.join(' AND ') + ')')
+        }
+        continue
+      }
       if (where[i] === null) {
         whereA.push('ISNULL(`' + i + '`)')
       } else if (where[i] instanceof Sql) {
         whereA.push((where[i] as Sql).toString())
       } else if (Array.isArray(where[i])) {
         const arr = where[i] as any[]
+        const quoteOrSql = (v: any) => v instanceof Sql ? v.toString() : this.quote(v)
         if (arr[0].toUpperCase() === 'IN' || arr[0].toUpperCase() === 'NOT IN') {
           whereA.push('`' + i + '` ' + arr[0].toUpperCase() + '(' + (arr[1] as any[]).map((v: any) => this.quote(v)).join(',') + ')')
         } else if (['<', '>', '!=', '>=', '<='].includes(arr[0])) {
-          whereA.push('`' + i + '` ' + arr[0] + ' ' + this.quote(arr[1]))
+          whereA.push('`' + i + '` ' + arr[0] + ' ' + quoteOrSql(arr[1]))
         } else if (arr[0].toUpperCase() === 'BETWEEN') {
-          whereA.push('`' + i + '` BETWEEN ' + this.quote(arr[1]) + ' AND ' + this.quote(arr[2]))
+          whereA.push('`' + i + '` BETWEEN ' + quoteOrSql(arr[1]) + ' AND ' + quoteOrSql(arr[2]))
         } else {
-          whereA.push('`' + i + '` ' + arr[0] + ' ' + this.quote(arr[1]))
+          whereA.push('`' + i + '` ' + arr[0] + ' ' + quoteOrSql(arr[1]))
         }
       } else {
         whereA.push('`' + i + '` = ' + this.quote(where[i]))
