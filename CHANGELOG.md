@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.0] - 2026-03-16
+
+### Added
+
+- **Multi-database миграции** — миграции могут целиться в разные базы данных через метод `database()` и конфиг `databases` в `orcs-db.config`. Migrator лениво создаёт пулы для вторичных БД и закрывает через `endAll()`
+- **Preflight-валидация в `migrate()`** — все pending миграции загружаются и их `database()` проверяется до выполнения первой. Если имя базы не найдено в конфиге — ошибка до начала работы
+- **Колонка `database` в `orcs_db_migrations`** — трекинг-таблица хранит имя целевой БД. `ensureTable()` добавляет колонку через `ALTER TABLE ADD COLUMN IF NOT EXISTS` для совместимости с существующими установками
+- **`Migration.database()`** — метод базового класса, возвращает `string | undefined` (по умолчанию `undefined` = master pool)
+- **`Migrator.endAll()`** — закрывает все вторичные пулы, не трогает master
+- **`--database` опция в `migrate:create`** — генерирует шаблон миграции с методом `database()`
+- **Database-метка в `migrate:status`** — вывод показывает `[dbName]` рядом с именем миграции
+
+### Changed
+
+- `MigrationStatus` расширен полем `database: string | null`
+- `Migrator` конструктор принимает опциональный `databases?: Record<string, PoolConfig>`
+- `rollback()` читает `database` из трекинг-таблицы (fallback на класс для старых записей)
+- CLI команды `migrate`, `migrate:rollback`, `migrate:status` используют `try/finally` для гарантированной очистки пулов
+
 ## [0.4.0] - 2026-03-14
 
 ### Added

@@ -4,6 +4,7 @@ import { Command } from 'commander'
 import * as path from 'path'
 import * as fs from 'fs'
 import { Generator } from 'orcs-db'
+import type { PoolConfig } from 'orcs-db'
 
 const program = new Command()
 
@@ -60,12 +61,13 @@ program
   .command('migrate')
   .description('Run pending migrations')
   .action(async () => {
+    let pool: any, migrator: any
     try {
       const config = await loadConfig()
       const { Pool, Migrator } = require('orcs-db')
 
-      const pool = new Pool(config)
-      const migrator = new Migrator(pool, config.migrationsDir || './migrations')
+      pool = new Pool(config)
+      migrator = new Migrator(pool, config.migrationsDir || './migrations', config.databases)
 
       const applied = await migrator.migrate()
       if (applied.length === 0) {
@@ -74,10 +76,12 @@ program
         console.log(`Applied ${applied.length} migration(s):`)
         applied.forEach((name: string) => console.log(`  ✓ ${name}`))
       }
-      await pool.end()
     } catch (err) {
       console.error('Migration failed:', (err as Error).message)
-      process.exit(1)
+      process.exitCode = 1
+    } finally {
+      if (migrator) await migrator.endAll()
+      if (pool) await pool.end()
     }
   })
 
@@ -85,12 +89,13 @@ program
   .command('migrate:rollback')
   .description('Rollback last migration batch')
   .action(async () => {
+    let pool: any, migrator: any
     try {
       const config = await loadConfig()
       const { Pool, Migrator } = require('orcs-db')
 
-      const pool = new Pool(config)
-      const migrator = new Migrator(pool, config.migrationsDir || './migrations')
+      pool = new Pool(config)
+      migrator = new Migrator(pool, config.migrationsDir || './migrations', config.databases)
 
       const rolledBack = await migrator.rollback()
       if (rolledBack.length === 0) {
@@ -99,10 +104,12 @@ program
         console.log(`Rolled back ${rolledBack.length} migration(s):`)
         rolledBack.forEach((name: string) => console.log(`  ✗ ${name}`))
       }
-      await pool.end()
     } catch (err) {
       console.error('Rollback failed:', (err as Error).message)
-      process.exit(1)
+      process.exitCode = 1
+    } finally {
+      if (migrator) await migrator.endAll()
+      if (pool) await pool.end()
     }
   })
 
@@ -110,12 +117,13 @@ program
   .command('migrate:status')
   .description('Show migration status')
   .action(async () => {
+    let pool: any, migrator: any
     try {
       const config = await loadConfig()
       const { Pool, Migrator } = require('orcs-db')
 
-      const pool = new Pool(config)
-      const migrator = new Migrator(pool, config.migrationsDir || './migrations')
+      pool = new Pool(config)
+      migrator = new Migrator(pool, config.migrationsDir || './migrations', config.databases)
 
       const statuses = await migrator.status()
       if (statuses.length === 0) {
@@ -123,14 +131,17 @@ program
       } else {
         console.log('Migration status:')
         statuses.forEach((s: any) => {
-          const status = s.applied ? `✓ (batch ${s.batch})` : '✗ pending'
-          console.log(`  ${status}  ${s.name}`)
+          const status = s.applied ? `✓ (batch ${s.batch})` : '✗ pending  '
+          const db = s.database ? ` [${s.database}]` : ''
+          console.log(`  ${status}${db}  ${s.name}`)
         })
       }
-      await pool.end()
     } catch (err) {
       console.error('Status check failed:', (err as Error).message)
-      process.exit(1)
+      process.exitCode = 1
+    } finally {
+      if (migrator) await migrator.endAll()
+      if (pool) await pool.end()
     }
   })
 
@@ -138,6 +149,7 @@ program
   .command('migrate:create <name>')
   .description('Create a new migration file')
   .option('-d, --dir <dir>', 'Migrations directory', './migrations')
+  .option('--database <name>', 'Target database name (from databases config)')
   .action(async (name: string, opts: any) => {
     try {
       const dir = path.resolve(opts.dir)
@@ -145,15 +157,24 @@ program
         fs.mkdirSync(dir, { recursive: true })
       }
 
-      // Timestamp-based prefix: YYYYMMDDHHmmss
       const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)
       const fileName = `${timestamp}_${name}.ts`
       const filePath = path.join(dir, fileName)
 
+      if (opts.database && !/^[a-zA-Z0-9_]+$/.test(opts.database)) {
+        console.error('Invalid database name. Use only letters, numbers, and underscores.')
+        process.exitCode = 1
+        return
+      }
+
+      const databaseMethod = opts.database
+        ? `\n  database() { return '${opts.database}' }\n`
+        : ''
+
       const template = `import { Migration } from 'orcs-db'
 import type { Connection } from 'orcs-db'
 
-export default class extends Migration {
+export default class extends Migration {${databaseMethod}
   async up(db: Connection): Promise<void> {
     // await db.query(\`\`)
   }
@@ -179,6 +200,7 @@ interface OrcDbConfig {
   database: string
   port?: number
   migrationsDir?: string
+  databases?: Record<string, PoolConfig>
 }
 
 function isESMProject(filePath: string): boolean {
